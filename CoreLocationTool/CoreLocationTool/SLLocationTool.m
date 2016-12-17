@@ -1,0 +1,171 @@
+//
+//  SLLocationTool.m
+//  CoreLoationMapViewDemo
+//
+//  Created by Melody on 2016/12/2.
+//  Copyright © 2016年 admin. All rights reserved.
+//
+
+#define kMainScreenWIGHT [UIScreen mainScreen].bounds.size.width
+#define kMainScreenHEIGHT [UIScreen mainScreen].bounds.size.height
+#define filePath [[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)objectAtIndex:0]stringByAppendingPathComponent:<#文件名#>]
+#define kDeviceSysVersion  [[UIDevice currentDevice].systemVersion doubleValue]
+
+#import "SLLocationTool.h"
+
+@interface SLLocationTool()<CLLocationManagerDelegate>
+
+/** CLLocationManager */
+@property (nonatomic,strong) CLLocationManager * locaManager;
+
+/** Geo编码 */
+@property (nonatomic,strong) CLGeocoder * geoCoder;
+
+/** 反馈Block */
+@property (nonatomic,strong) ResultBlock resultBlock ;
+
+@end
+
+@implementation SLLocationTool
+
+single_implementation(SLLocationTool) //单例
+
+#pragma mark - LazyLoad
+
+- (CLLocationManager *)locaManager {
+    
+    if (!_locaManager) {
+        _locaManager = [[CLLocationManager alloc] init];
+        _locaManager.delegate = self;
+        _locaManager.desiredAccuracy = kCLLocationAccuracyBest;
+        NSDictionary *infoDict =  [[NSBundle mainBundle] infoDictionary];
+        NSString *WhenStr = infoDict[@"NSLocationWhenInUseUsageDescription"];
+        NSString *alwaysStr= infoDict[@"NSLocationAlwaysUsageDescription"];
+        //判断定位权限模式：如果两个都存在，请求 权限比较高的一个(Always)
+        //如果只有某一个，就请求对应的授权，如果两个都没有就提醒
+        if (kDeviceSysVersion >= 8.0) {
+            if (alwaysStr != nil) {
+                [_locaManager requestAlwaysAuthorization];    // 永久授权
+                NSLog(@"请求 Always 权限");
+            }else if (WhenStr!= nil) {
+                [_locaManager requestWhenInUseAuthorization]; //使用中授权
+                NSLog(@"请求 WhenUserIn 权限");
+                // 判断iOS9.0 兼容iOS9.0前台授权模式下的后台获取位置(会出现蓝条)
+                if (kDeviceSysVersion >= 9.0) {
+                    NSArray *backModes = [infoDict valueForKey:@"UIBackgroundModes"]; // 获取后台模式数组
+                    if ([backModes containsObject:@"location"]) { // 判断后台模式中是否包含位置更新服务
+                        _locaManager.allowsBackgroundLocationUpdates = YES;
+                    }
+                }
+            }else {
+                NSLog(@"ERROR===iOS8 以后需要 主动请求授权 ！请在info.Plist 文件添加 授权名单 NSLocationAlwaysUsageDescription 或者 requestWhenInUseAuthorization");
+            }
+        }else {   // iOS 7 以前开启定位
+            [_locaManager startUpdatingLocation];
+        }
+    }
+    return _locaManager;
+}
+
+- (CLGeocoder *)geoCoder {
+    
+    if (!_geoCoder) {
+        _geoCoder = [[CLGeocoder alloc] init];
+    }
+    return _geoCoder;
+}
+
+#pragma privaty Method
+
+//获取当前位置
+- (void)getCurrentLocation:(ResultBlock)block {
+    
+    self.resultBlock = block;
+    
+    if ([CLLocationManager locationServicesEnabled]) {
+        [self.locaManager startUpdatingLocation];    // 开始更新用户位置
+    }
+    else {
+        self.resultBlock(nil, nil, @"定位服务未开启");
+    }
+    
+}
+
+- (void)stopUpdatingLocation {
+    
+    [self.locaManager stopUpdatingLocation];
+    
+}
+
+#pragma mark - CLLocationManagerDelegate
+/**
+ *  获取到用户位置之后调用
+ *
+ *  @param manager   位置管理者
+ *  @param locations 位置信息数组
+ */
+
+-(void)locationManager:(CLLocationManager *)manager
+    didUpdateLocations:(NSArray *)locations
+{
+    
+    // 获取到位置信息后,再进行地理编码
+    [self.geoCoder reverseGeocodeLocation:[locations lastObject] completionHandler:^(NSArray *placemarks, NSError *error) {
+        if (self.resultBlock) {
+            self.resultBlock([locations lastObject], [placemarks firstObject], nil);
+        }
+    }];
+    
+}
+
+- (void)updateUserLocation {
+    [self.locaManager startUpdatingLocation];
+}
+
+/**
+ *  当用户授权状态发生变化时调用
+ */
+-(void)locationManager:(nonnull CLLocationManager *)manager didChangeAuthorizationStatus:(CLAuthorizationStatus)status
+{
+    switch (status) {
+        case kCLAuthorizationStatusNotDetermined: {
+            NSLog(@"用户选择中");    // 用户选择中
+            break;
+        }
+            // 访问受限
+        case kCLAuthorizationStatusRestricted: {
+            NSLog(@"访问受限"); 
+            self.resultBlock(nil, nil, @"访问受限");
+            break;
+        }
+            // 定位关闭时和对此APP授权为never时调用
+        case kCLAuthorizationStatusDenied:
+        {
+            // 定位是否可用（是否支持定位或者定位是否开启）
+            if([CLLocationManager locationServicesEnabled]) {
+                NSLog(@"定位开启，但被拒");
+                self.resultBlock(nil, nil, @"被拒绝");
+            }else {
+                NSLog(@"定位关闭，不可用");
+            }
+            break;
+        }
+            // 获取前后台定位授权
+        case kCLAuthorizationStatusAuthorizedAlways:
+        {
+            NSLog(@"获取前后台定位授权");
+            break;
+        }
+            // 获得前台定位授权
+        case kCLAuthorizationStatusAuthorizedWhenInUse:
+        {
+            NSLog(@"获得前台定位授权");
+            break;
+        }
+        default:
+            break;
+    }
+    
+}
+
+@end
