@@ -6,9 +6,6 @@
 //  Copyright © 2016年 admin. All rights reserved.
 //
 
-#define kMainScreenWIGHT [UIScreen mainScreen].bounds.size.width
-#define kMainScreenHEIGHT [UIScreen mainScreen].bounds.size.height
-#define filePath [[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)objectAtIndex:0]stringByAppendingPathComponent:<#文件名#>]
 #define kDeviceSysVersion  [[UIDevice currentDevice].systemVersion doubleValue]
 
 #import "SLLocationTool.h"
@@ -28,7 +25,23 @@
 
 @implementation SLLocationTool
 
-single_implementation(SLLocationTool) //单例
+static SLLocationTool *_instance;
+
++ (SLLocationTool *)sharedSLLocationTool {
+    if (_instance == nil) {
+        _instance = [[self alloc] init];
+    }
+    return _instance;
+    
+}
++ (id)allocWithZone:(NSZone *)zone {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        _instance = [super allocWithZone:zone];
+    });
+    return _instance;
+}
+
 
 #pragma mark - LazyLoad
 
@@ -38,31 +51,7 @@ single_implementation(SLLocationTool) //单例
         _locaManager = [[CLLocationManager alloc] init];
         _locaManager.delegate = self;
         _locaManager.desiredAccuracy = kCLLocationAccuracyBest;
-        NSDictionary *infoDict =  [[NSBundle mainBundle] infoDictionary];
-        NSString *WhenStr = infoDict[@"NSLocationWhenInUseUsageDescription"];
-        NSString *alwaysStr= infoDict[@"NSLocationAlwaysUsageDescription"];
-        //判断定位权限模式：如果两个都存在，请求 权限比较高的一个(Always)
-        //如果只有某一个，就请求对应的授权，如果两个都没有就提醒
-        if (kDeviceSysVersion >= 8.0) {
-            if (alwaysStr != nil) {
-                [_locaManager requestAlwaysAuthorization];    // 永久授权
-                NSLog(@"请求 Always 权限");
-            }else if (WhenStr!= nil) {
-                [_locaManager requestWhenInUseAuthorization]; //使用中授权
-                NSLog(@"请求 WhenUserIn 权限");
-                // 判断iOS9.0 兼容iOS9.0前台授权模式下的后台获取位置(会出现蓝条)
-                if (kDeviceSysVersion >= 9.0) {
-                    NSArray *backModes = [infoDict valueForKey:@"UIBackgroundModes"]; // 获取后台模式数组
-                    if ([backModes containsObject:@"location"]) { // 判断后台模式中是否包含位置更新服务
-                        _locaManager.allowsBackgroundLocationUpdates = YES;
-                    }
-                }
-            }else {
-                NSLog(@"ERROR===iOS8 以后需要 主动请求授权 ！请在info.Plist 文件添加 授权名单 NSLocationAlwaysUsageDescription 或者 requestWhenInUseAuthorization");
-            }
-        }else {   // iOS 7 以前开启定位
-            [_locaManager startUpdatingLocation];
-        }
+        [self startUpdateLocation];
     }
     return _locaManager;
 }
@@ -73,6 +62,33 @@ single_implementation(SLLocationTool) //单例
         _geoCoder = [[CLGeocoder alloc] init];
     }
     return _geoCoder;
+}
+
+- (void)startUpdateLocation {
+    
+    //1.获取授权
+    NSDictionary *infoDict =  [[NSBundle mainBundle] infoDictionary];
+    NSString *WhenStr = infoDict[@"NSLocationWhenInUseUsageDescription"];
+    NSString *alwaysStr= infoDict[@"NSLocationAlwaysUsageDescription"];
+    //判断定位权限模式：
+    //如果两个都存在，请求 权限比较高的一个(Always)，如果只有某一个，就请求对应的授权，如果两个都没有就提示开发者
+    if (kDeviceSysVersion >= 8.0) {
+        if (alwaysStr != nil) {
+            NSLog(@"请求 Always 权限");
+            [self.locaManager requestAlwaysAuthorization];    // 永久授权(前后台模式)
+        }else if (WhenStr!= nil) {
+            NSLog(@"请求 WhenUserIn 权限");
+            [self.locaManager requestWhenInUseAuthorization]; // 使用时授权(前台模式)
+        }else {
+            NSLog(@"ERROR===iOS8 以后需要 主动请求授权 ！请在info.Plist 文件添加 授权名单 NSLocationAlwaysUsageDescription 或者 requestWhenInUseAuthorization");
+        }
+        NSArray *backModes = [infoDict valueForKey:@"UIBackgroundModes"]; // 获取后台参数数组
+        if ([backModes containsObject:@"location"]) {
+            self.locaManager.allowsBackgroundLocationUpdates = YES;       // 判断后台模式中是否包含位置更新服务
+        }
+    }
+    //2.开启定位
+    [self.locaManager startUpdatingLocation];
 }
 
 #pragma privaty Method

@@ -9,13 +9,16 @@
 #import <Foundation/Foundation.h>
 #import <CoreLocation/CoreLocation.h>
 #import <UIKit/UIKit.h>
-#import "Singleton.h"
 
 typedef void(^ResultBlock) (CLLocation *currentLoc,CLPlacemark *placemark,NSString *error);
 
 @interface SLLocationTool : NSObject
 
-single_interface(SLLocationTool);
+
+/**
+ 单例
+ */
++ (SLLocationTool *)sharedSLLocationTool;
 
 /**
  获取当前位置
